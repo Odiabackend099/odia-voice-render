@@ -1,0 +1,52 @@
+{
+  "model": "vits",
+  "run_name": "odia_vits_rtx_max",
+  "run_description": "VITS single-speaker on ODIA-VOICE (LJS format)",
+  "seed": 54321,
+
+  "output_path": "C:\\ODIA-VOICE\\trainer_output",
+
+  "audio": {
+    "sample_rate": 22050,
+    "win_length": 1024,
+    "hop_length": 256,
+    "num_mels": 80,
+    "mel_fmin": 0,
+    "mel_fmax": 8000
+  },
+
+  "use_phonemes": false,
+  "phonemizer": null,
+  "add_blank": true,
+
+  "datasets": [
+    {
+      "formatter": "ljspeech",
+      "path": "C:\\ODIA-VOICE",
+      "meta_file_train": "metadata_ljs.csv",
+      "meta_file_val":   "metadata_ljs.csv",
+      "eval_split_size": 0.02
+    }
+  ],
+
+  "batch_size": 16,
+  "eval_batch_size": 16,
+  "num_loader_workers": 8,
+  "num_eval_loader_workers": 4,
+
+  "run_eval": true,
+  "epochs": 50,
+  "test_delay_epochs": -1,
+
+  "mixed_precision": true,
+  "print_step": 50,
+  "save_checkpoints": true,
+  "save_best_after": 1000,
+  "log_interval": 10,
+
+  "optimizer": "AdamW",
+  "optimizer_params": { "weight_decay": 1e-6 },
+
+  "lr_gen": 0.0002,
+  "lr_disc": 0.0002
+}
