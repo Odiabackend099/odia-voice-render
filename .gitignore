@@ -1,21 +1,12 @@
-﻿# build & runtime
-__pycache__/
-*.pyc
-.env
-.venv/
-*.log
-
-# large data / generated audio
+﻿.env
+.env.*
+node_modules
+*.wav
+*.mp3
 raw/
 wavs/
 wavs_seg/
-ref/
-output/
-api_out/
 trainer_output/
-VOICEPACK_pidgin/
-*.wav
-*.tfevents
-*.pth
-*.pt
-*.bin
+ref/
+cache/
+__pycache__/

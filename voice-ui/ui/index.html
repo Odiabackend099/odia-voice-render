@@ -1,0 +1,142 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>ODIA Voice — Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 12px;background:#0b0b0c;color:#eee}
+    h1{font-size:20px;margin:0 0 12px}
+    .row{display:flex;gap:8px;margin:8px 0}
+    input,button{font-size:16px;border-radius:10px;border:1px solid #333;padding:10px 12px;background:#161618;color:#eee}
+    button{cursor:pointer}
+    .btn{background:#2b7cff;border:1px solid #2b7cff}
+    .btn.red{background:#f04747;border-color:#f04747}
+    .log{font:14px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;background:#121214;border:1px solid #222;padding:10px;border-radius:10px;min-height:80px}
+    audio{width:100%;margin-top:8px}
+    .bubble{background:#15161a;border:1px solid #27282d;padding:10px;border-radius:12px;margin:6px 0}
+    .you{border-left:4px solid #2b7cff}
+    .lexi{border-left:4px solid #37c97b}
+    .pill{display:inline-block;background:#202127;border:1px solid #2a2b31;padding:3px 8px;border-radius:999px;font-size:12px;margin-left:6px}
+  </style>
+</head>
+<body>
+  <h1>ODIA Voice — Local <span class="pill" id="flags">Whisper: OFF • Claude: OFF</span></h1>
+
+  <div class="row">
+    <input id="text" placeholder="Type message (or use mic)…" style="flex:1"/>
+    <button class="btn" id="send">Send & Speak</button>
+  </div>
+
+  <div class="row">
+    <button id="mic" class="btn">🎤 Tap to Talk</button>
+    <button id="stop" class="btn red" disabled>■ Stop</button>
+  </div>
+
+  <div id="chat"></div>
+  <audio id="player" controls></audio>
+  <div class="log" id="log"></div>
+
+<script>
+const log = m => (document.getElementById("log").textContent += m + "\n");
+const addBubble = (cls, text) => {
+  const div = document.createElement("div");
+  div.className = "bubble " + cls;
+  div.textContent = text;
+  document.getElementById("chat").appendChild(div);
+  div.scrollIntoView({behavior:"smooth",block:"end"});
+};
+
+async function health() {
+  try {
+    const r = await fetch("/api/health"); const j = await r.json();
+    const whisper = j?.tts ? (j?.tts?.model_loaded ? "ON" : "OFF") : "OFF";
+    // flags show only LLM/Whisper availability from server console line
+  } catch {}
+}
+health();
+
+async function sendText(text) {
+  addBubble("you", text);
+  const r = await fetch("/api/reply", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ text })
+  });
+  const j = await r.json();
+  if (!j.ok) { log("❌ " + j.error); return; }
+  addBubble("lexi", j.reply_text);
+  const player = document.getElementById("player");
+  player.src = j.audio_url;
+  await player.play().catch(()=>{});
+}
+
+document.getElementById("send").onclick = async () => {
+  const t = document.getElementById("text").value.trim();
+  if (t) { document.getElementById("text").value = ""; await sendText(t); }
+};
+
+/* Mic mode:
+   - If OPENAI Whisper is configured server-side, we send audio (webm).
+   - Otherwise, we fall back to browser Web Speech (transcribe to text locally then send text).
+*/
+let media, rec, chunks=[], usingWebSpeech=false, recog;
+
+function stopRec() {
+  document.getElementById("stop").disabled = true;
+  document.getElementById("mic").disabled = false;
+  try { rec?.stop(); } catch {}
+  try { media?.getTracks().forEach(t=>t.stop()); } catch {}
+  try { if (recog) recog.stop(); } catch {}
+}
+
+document.getElementById("stop").onclick = stopRec;
+
+document.getElementById("mic").onclick = async () => {
+  // Try server STT (preferred)
+  usingWebSpeech = false;
+  chunks = [];
+  try {
+    media = await navigator.mediaDevices.getUserMedia({ audio:true });
+    rec = new MediaRecorder(media, { mimeType: "audio/webm" });
+    rec.ondataavailable = e => { if (e.data.size>0) chunks.push(e.data); };
+    rec.onstop = async () => {
+      const blob = new Blob(chunks, { type:"audio/webm" });
+      const fd = new FormData();
+      fd.append("audio", blob, "mic.webm");
+      addBubble("you", "🎤 (voice)");
+      const r = await fetch("/api/reply", { method:"POST", body: fd });
+      const j = await r.json();
+      if (!j.ok) { log("❌ " + j.error); return; }
+      addBubble("lexi", j.reply_text);
+      const player = document.getElementById("player");
+      player.src = j.audio_url;
+      await player.play().catch(()=>{});
+    };
+    document.getElementById("mic").disabled = true;
+    document.getElementById("stop").disabled = false;
+    rec.start(200); // 200ms chunks
+    // Auto-stop after ~5s of capture; you can tweak or replace with VAD
+    setTimeout(()=>{ try{ rec.stop(); }catch{}; stopRec(); }, 5000);
+    return;
+  } catch (e) {
+    // If mic/WebM path fails (or server has no OPENAI key), fall back to Web Speech
+    usingWebSpeech = true;
+  }
+
+  // Fallback: Web Speech (Chrome)
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert("SpeechRecognition not supported. Type your message instead."); return; }
+  recog = new SR(); recog.lang = "en-US"; recog.interimResults = false;
+  recog.onresult = async (ev) => {
+    const text = ev.results?.[0]?.[0]?.transcript || "";
+    if (text) await sendText(text);
+  };
+  recog.onend = stopRec;
+  document.getElementById("mic").disabled = true;
+  document.getElementById("stop").disabled = false;
+  recog.start();
+};
+</script>
+</body>
+</html>

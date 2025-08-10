@@ -1,0 +1,129 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ODIA Voice – Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:20px;background:#0b1020;color:#e9eef7}
+    .wrap{max-width:780px;margin:0 auto}
+    h1{font-size:20px;margin:0 0 12px}
+    .row{display:flex;gap:8px;margin-top:10px}
+    input,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #223}
+    input{flex:1;background:#0f1730;color:#e9eef7}
+    button{background:#1f6feb;color:#fff;border:none;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    #log{font-size:13px;color:#a9b9d7;margin-top:8px;white-space:pre-wrap}
+    .mic{margin-left:8px}
+    .bubble{margin-top:12px;padding:10px 12px;background:#121a39;border:1px solid #223;border-radius:12px}
+    audio{margin-top:8px;width:100%}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ODIA Voice – Local (Lexi)</h1>
+  <div class="row">
+    <input id="text" placeholder="Type your message… e.g. How you dey?" />
+    <button id="send">Send & Speak</button>
+    <button id="mic" class="mic">🎤 Tap to Talk</button>
+  </div>
+  <div id="log"></div>
+  <div id="chat"></div>
+</div>
+
+<script>
+const TTS_BASE = "http://localhost:8002"; // your local ODIA TTS
+const logEl = document.getElementById('log');
+const chatEl = document.getElementById('chat');
+const textEl = document.getElementById('text');
+const sendBtn = document.getElementById('send');
+const micBtn  = document.getElementById('mic');
+
+function say(m){ logEl.textContent = m; }
+function bubble(role, msg, audioUrl){
+  const d = document.createElement('div');
+  d.className='bubble';
+  d.innerHTML = "<b>"+role+":</b> "+msg;
+  if (audioUrl){
+    const a = document.createElement('audio');
+    a.controls = true; a.src = audioUrl;
+    d.appendChild(a);
+    setTimeout(()=>a.play().catch(()=>{}), 200);
+  }
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function speak(text){
+  // Reference-only mode (no named speaker): send speaker_wav always
+  const body = {
+    text,
+    agent: "lexi",
+    language: "en",
+    speed: 1.0,
+    // IMPORTANT: you already have this file locally:
+    speaker_wav: "C:\\\\Users\\\\OD~IA\\\\ODIA-VOICE\\\\ref\\\\lexi_ref.wav"
+  };
+  const r = await fetch(TTS_BASE + "/speak", {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){ throw new Error("TTS failed: "+r.status); }
+  const j = await r.json();
+  return TTS_BASE + j.audio_url; // absolute URL for playback
+}
+
+sendBtn.onclick = async ()=>{
+  const t = (textEl.value||"").trim();
+  if(!t) return;
+  sendBtn.disabled = true;
+  bubble("You", t);
+  say("Thinking + speaking…");
+  try{
+    // For now we use the same text as reply (offline fallback).
+    const reply = t; 
+    const audioUrl = await speak(reply);
+    bubble("Lexi", reply, audioUrl);
+    say("Done");
+  }catch(e){
+    say("Error: "+e.message);
+  }finally{
+    sendBtn.disabled = false;
+  }
+};
+
+// Simple mic: one-shot recording to text via browser SpeechRecognition (offline fallback)
+let rec;
+micBtn.onclick = ()=>{
+  try{
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) { alert("SpeechRecognition not available in this browser."); return; }
+    rec?.stop();
+    rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    micBtn.disabled = true;
+    say("Listening…");
+    rec.onresult = async (ev)=>{
+      const t = ev.results[0][0].transcript;
+      textEl.value = t;
+      bubble("You (mic)", t);
+      try{
+        say("Speaking…");
+        const audioUrl = await speak(t);
+        bubble("Lexi", t, audioUrl);
+        say("Done");
+      }catch(e){ say("Error: "+e.message); }
+      micBtn.disabled = false;
+    };
+    rec.onerror = ()=>{ micBtn.disabled = false; say("Mic error"); };
+    rec.onend = ()=>{ micBtn.disabled = false; say("Mic ended"); };
+    rec.start();
+  }catch(err){
+    say("Mic failed: "+err.message);
+  }
+};
+</script>
+</body>
+</html>

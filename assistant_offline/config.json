@@ -1,0 +1,11 @@
+{
+  "voice_api_url": "http://localhost:8002",
+  "speaker_wav": "C:\Users\OD~IA\ODIA-VOICE\ref\lexi_ref.wav",
+
+  "llm_backend": "ollama",                 // "ollama" or "lmstudio"
+  "ollama_url": "http://localhost:11434/api/chat",
+  "lmstudio_url": "http://localhost:1234/v1/chat/completions",
+
+  "model": "llama3.1:8b",                  // Ollama model (pull once)
+  "system_prompt": "You are Lexi, a helpful Nigerian AI assistant. Keep answers short and natural."
+}

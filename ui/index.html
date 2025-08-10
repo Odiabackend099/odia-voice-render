@@ -1,0 +1,112 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ODIA Voice – Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:820px;margin:24px auto;padding:0 16px}
+    h1{font-size:20px;margin:0 0 8px}
+    .row{display:flex;gap:8px;margin:12px 0}
+    input[type=text]{flex:1;padding:10px 12px;border:1px solid #ccc;border-radius:8px}
+    button{padding:10px 14px;border:0;border-radius:8px;background:#111;color:#fff;cursor:pointer}
+    .log{font-size:13px;color:#555;margin-top:8px;white-space:pre-wrap}
+    .bubble{padding:10px 12px;border-radius:12px;margin:8px 0;max-width:640px}
+    .me{background:#e8f0fe;align-self:flex-end}
+    .bot{background:#f5f5f5}
+    .col{display:flex;flex-direction:column}
+  </style>
+</head>
+<body>
+  <h1>ODIA Voice – Local Test UI</h1>
+  <div class="row">
+    <input id="api" type="text" value="http://localhost:8002" title="ODIA TTS URL" />
+    <button id="ping">Ping</button>
+  </div>
+
+  <div class="col" id="chat"></div>
+
+  <div class="row">
+    <input id="msg" type="text" placeholder="Type something for Lexi to say…" />
+    <button id="send">Send & Speak</button>
+  </div>
+
+  <audio id="player" controls style="width:100%;margin-top:8px;"></audio>
+  <div class="log" id="log"></div>
+
+  <script>
+    const $api   = document.getElementById('api');
+    const $msg   = document.getElementById('msg');
+    const $send  = document.getElementById('send');
+    const $ping  = document.getElementById('ping');
+    const $player= document.getElementById('player');
+    const $chat  = document.getElementById('chat');
+    const $log   = document.getElementById('log');
+
+    function line(txt, who){
+      const div = document.createElement('div');
+      div.className = `bubble ${who}`;
+      div.textContent = txt;
+      $chat.appendChild(div);
+      $chat.scrollTop = $chat.scrollHeight;
+    }
+
+    async function speak(text){
+      const API = $api.value.replace(/\/+$/,'');
+      $log.textContent = "Calling " + API + "/speak …";
+      const res = await fetch(API + "/speak", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          text,
+          agent: "lexi",
+          language: "en",
+          speed: 1.0
+        })
+      });
+      const data = await res.json().catch(()=> ({}));
+      if(!res.ok){
+        throw new Error((data && data.detail) || ("HTTP " + res.status));
+      }
+      if(!data.audio_url){
+        throw new Error("No audio_url in response.");
+      }
+      const url = API + data.audio_url;
+      $log.textContent = "Playing: " + url;
+      $player.src = url;
+      await $player.play().catch(e=>console.warn(e));
+      return data;
+    }
+
+    $send.onclick = async ()=>{
+      const text = $msg.value.trim();
+      if(!text) return;
+      line(text, "me");
+      $msg.value = "";
+      try{
+        const res = await speak(text);
+        line("✅ Spoke: " + (res.message || "OK"), "bot");
+      }catch(err){
+        $log.textContent = "Error: " + err.message;
+        line("❌ " + err.message, "bot");
+      }
+    };
+
+    $ping.onclick = async ()=>{
+      const API = $api.value.replace(/\/+$/,'');
+      try{
+        const r = await fetch(API + "/health");
+        const j = await r.json();
+        $log.textContent = "Health: " + JSON.stringify(j);
+      }catch(e){
+        $log.textContent = "Health check failed: " + e.message;
+      }
+    };
+
+    // Enter key to send
+    $msg.addEventListener('keydown', e=>{
+      if(e.key === 'Enter'){ $send.click(); }
+    });
+  </script>
+</body>
+</html>

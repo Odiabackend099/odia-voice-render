@@ -1,0 +1,67 @@
+﻿from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from TTS.api import TTS
+import os, uuid, logging
+
+APP_OUT = r"C:\Users\OD~IA\ODIA-VOICE\out"
+REF_WAV = r"C:\Users\OD~IA\ODIA-VOICE\ref\lexi_ref.wav"
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("odia-voice")
+
+app = FastAPI(title="ODIA Voice API (ref-only)")
+
+tts = None
+
+class SpeakReq(BaseModel):
+    text: str
+    language: str = "en"
+    speed: float = 1.0
+    speaker_wav: str | None = None  # optional override, else REF_WAV
+
+@app.on_event("startup")
+def _startup():
+    global tts
+    os.makedirs(APP_OUT, exist_ok=True)
+    if not os.path.isfile(REF_WAV):
+        raise RuntimeError(f"Reference WAV missing: {REF_WAV}")
+    log.info("Loading XTTS v2…")
+    tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2", gpu=True)
+    log.info("XTTS v2 ready.")
+
+@app.get("/health")
+def health():
+    return {"ready": tts is not None, "model": "xtts_v2"}
+
+@app.post("/speak")
+def speak(req: SpeakReq):
+    if not req.text or not req.text.strip():
+        raise HTTPException(400, "text is required")
+
+    # Always pass a speaker_wav (reference by default)
+    ref = req.speaker_wav if req.speaker_wav and os.path.isfile(req.speaker_wav) else REF_WAV
+    out_name = f"{uuid.uuid4().hex}.wav"
+    out_path = os.path.join(APP_OUT, out_name)
+
+    try:
+        tts.tts_to_file(
+            text=req.text,
+            file_path=out_path,
+            speaker_wav=ref,
+            language=req.language or "en",
+            speed=req.speed or 1.0,
+        )
+    except Exception as e:
+        log.exception("speak error")
+        raise HTTPException(500, f"Voice generation failed: {e}")
+
+    return {"status":"SUCCESS","audio_url":f"/audio/{out_name}"}
+
+@app.get("/audio/{fname}")
+def audio(fname: str):
+    path = os.path.join(APP_OUT, fname)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Audio not found")
+    return FileResponse(path, media_type="audio/wav")
+
